@@ -1,5 +1,7 @@
 package com.github.pog.BooleanAlgebra.expr;
 
+import java.util.Map;
+
 public class Not implements Expr {
     Expr e;
 
@@ -7,7 +9,8 @@ public class Not implements Expr {
         this.e = e;
     }
 
-    public boolean eval() {
-        return !e.eval();
+    public EvalResult eval(Map<String, Expr> m) {
+        EvalResult r = e.eval(m);
+        return new EvalResult(!r.result, r.vars);
     }
 }

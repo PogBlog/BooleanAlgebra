@@ -12,21 +12,38 @@
 package com.github.pog.BooleanAlgebra;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import com.github.pog.BooleanAlgebra.token.*;
 
 public class LexerIterator implements Iterator<Token> {
-    static final Map<String, Token> map = Map.of(
-        "T", Token.True,
-        "F", Token.False,
-        "&&", Token.And,
-        "||", Token.Or,
-        "!", Token.Not,
-        "(", Token.LParen,
-        ")", Token.RParen,
-        " ", Token.NoOp,
-        "\t", Token.NoOp
+    static class RegexEntry {
+        public Pattern p;
+        public Function<Matcher, Token> f;
+
+        public RegexEntry(Pattern p, Function<Matcher, Token> f) {
+            this.p = p;
+            this.f = f;
+        }
+    }
+
+    static final List<RegexEntry> map = List.of(
+        new RegexEntry(Pattern.compile("T"), (ignored) -> new TTrue()),
+        new RegexEntry(Pattern.compile("F"), (ignored) -> new TFalse()),
+        new RegexEntry(Pattern.compile("&&"), (ignored) -> new TAnd()),
+        new RegexEntry(Pattern.compile("\\|\\|"), (ignored) -> new TOr()),
+        new RegexEntry(Pattern.compile("!"), (ignored) -> new TNot()),
+        new RegexEntry(Pattern.compile("\\("), (ignored) -> new TLParen()),
+        new RegexEntry(Pattern.compile("\\)"), (ignored) -> new TRParen()),
+        new RegexEntry(Pattern.compile("\\s+"), (ignored) -> new TNoOp()),
+        new RegexEntry(Pattern.compile("\\w+"), (m) -> new TVar(m.group(0))),
+        new RegexEntry(Pattern.compile("="), (ignored) -> new TEquals())
     );
 
     int _position;
@@ -42,18 +59,43 @@ public class LexerIterator implements Iterator<Token> {
         this._s = s;
     }
 
-    public Optional<Map.Entry<String, Token>> nextOpt() {
-        Optional<Map.Entry<String, Token>> entry;
+    class MatchResult {
+        public Matcher m;
+        public Function<Matcher, Token> f;
+        public MatchResult(Matcher m, Function<Matcher, Token> f) {
+            this.m = m;
+            this.f = f;
+        }
+        public Token apply() {
+            return f.apply(m);
+        }
+    }
+
+    public Optional<MatchResult> nextOptMatch() {
+        boolean foundToken;
         do {
-            entry = map.entrySet()
-                       .stream()
-                       .filter((e) -> _s.startsWith(e.getKey(), _position))
-                       .findAny();
-            if (entry.isPresent() && entry.get().getValue() == Token.NoOp) {
-                _position += entry.get().getKey().length();
+            foundToken = false;
+            for(var e : map) {
+                Pattern p = e.p;
+                Function<Matcher, Token> f = e.f;
+                Matcher m = p.matcher(_s).region(_position, _s.length());
+                if (m.lookingAt()) {
+                    foundToken = true;
+                    Token t = f.apply(m);
+                    if (!(t instanceof TNoOp)) {
+                        return Optional.of(new MatchResult(m, f));
+                    } else {
+                        _position += m.group(0).length();
+                        break;
+                    }
+                }
             }
-        } while(entry.isPresent() && entry.get().getValue() == Token.NoOp);
-        return entry;
+        } while(foundToken && _position < _s.length());
+        return Optional.empty();
+    }
+
+    public Optional<Token> nextOpt() {
+        return nextOptMatch().map((m) -> m.apply());
     }
 
     public boolean hasNext() {
@@ -62,9 +104,9 @@ public class LexerIterator implements Iterator<Token> {
 
     public Token next() throws NoSuchElementException {
         try {
-            Map.Entry<String, Token> e = nextOpt().get();
-            _position += e.getKey().length();
-            return e.getValue();
+            MatchResult m = nextOptMatch().get();
+            _position += m.m.group(0).length();
+            return m.apply();
         } catch(NoSuchElementException e) {
             throw new NoSuchElementException(String.format("Lexer error at position %d", _position));
         }

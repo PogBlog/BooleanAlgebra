@@ -4,6 +4,8 @@
 
 package com.github.pog.BooleanAlgebra.expr;
 
+import java.util.Map;
+
 public interface Expr {
-    public boolean eval();
+    public EvalResult eval(Map<String, Expr> vars);
 }

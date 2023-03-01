@@ -3,7 +3,8 @@
  * 
  * Our grammar is as follows. See grammar.md for analysis.
  * 
- * S ::= OR_EXPR
+ * S ::= ASSIGN_EXPR
+ * ASSIGN_EXPR ::= VAR = ASSIGN_EXPR | OR_EXPR
  * OR_EXPR ::= AND_EXPR OR_EXPR2
  * OR_EXPR2 ::= || AND_EXPR OR_EXPR2 | epsilon
  * AND_EXPR ::= NOT_EXPR AND_EXPR2
@@ -24,12 +25,24 @@
 
 package com.github.pog.BooleanAlgebra;
 import com.github.pog.BooleanAlgebra.expr.*;
+import com.github.pog.BooleanAlgebra.token.*;
 
 import java.util.Optional;
-import java.util.Map;
 
 public class IteratorParser {
     public static Optional<Expr> parseS(LexerIterator it) {
+        return parseAssignExpr(it);
+    }
+
+    public static Optional<Expr> parseAssignExpr(LexerIterator it) {
+        if (containsNextToken(it, new TVar(null))) {
+            TVar t = (TVar) it.next();
+            if (containsNextToken(it, new TEquals())) {
+                it.next();
+                return parseAssignExpr(it).map((e) -> new Assign(t.label, e));
+            }
+            return Optional.of(new Var(t.label));
+        }
         return parseOrExpr(it);
     }
 
@@ -39,7 +52,7 @@ public class IteratorParser {
     }
 
     public static Optional<Expr> parseOrExpr2(Expr e1, LexerIterator it) {
-        if (containsNextToken(it, Token.Or)) {
+        if (containsNextToken(it, new TOr())) {
             it.next();
             return parseAndExpr(it).flatMap((Expr e2) -> parseOrExpr2(new Or(e1, e2), it));
         }
@@ -52,7 +65,7 @@ public class IteratorParser {
     }
 
     public static Optional<Expr> parseAndExpr2(Expr e1, LexerIterator it) {
-        if (containsNextToken(it, Token.And)) {
+        if (containsNextToken(it, new TAnd())) {
             it.next();
             return parseAndExpr(it).flatMap((Expr e2) -> parseOrExpr2(new And(e1, e2), it));
         }
@@ -60,7 +73,7 @@ public class IteratorParser {
     }
 
     public static Optional<Expr> parseNotExpr(LexerIterator it) {
-        if (containsNextToken(it, Token.Not)) {
+        if (containsNextToken(it, new TNot())) {
             it.next();
             return parseNotExpr(it).map((Expr e) -> new Not(e)); 
         }
@@ -68,10 +81,10 @@ public class IteratorParser {
     }
 
     public static Optional<Expr> parseParenExpr(LexerIterator it) {
-        if (containsNextToken(it, Token.LParen)) {
+        if (containsNextToken(it, new TLParen())) {
             it.next();
-            Optional<Expr> e = parseOrExpr(it);
-            if (e.isPresent() && containsNextToken(it, Token.RParen)) {
+            Optional<Expr> e = parseAssignExpr(it);
+            if (e.isPresent() && containsNextToken(it, new TRParen())) {
                 it.next();
                 return e;
             }
@@ -81,20 +94,23 @@ public class IteratorParser {
     }
 
     public static Optional<Expr> parseTerminal(LexerIterator it) {
-        if (containsNextToken(it, Token.True)) {
+        if (containsNextToken(it, new TTrue())) {
             it.next();
             return Optional.of(new True());
         }
-        if (containsNextToken(it, Token.False)) {
+        if (containsNextToken(it, new TFalse())) {
             it.next();
             return Optional.of(new False());
+        }
+        if (containsNextToken(it, new TVar(null))) {
+            TVar t = (TVar) it.next();
+            return Optional.of(new Var(t.label)); 
         }
         return Optional.empty();
     }
 
     static boolean containsNextToken(LexerIterator it, Token expected) {
         return it.nextOpt()
-                 .map(Map.Entry::getValue)
                  .filter((t) -> t.equals(expected))
                  .isPresent();
     }
